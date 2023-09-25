@@ -1,97 +1,100 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract DegenToken {
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract DegenToken is IERC20, Ownable {
     string public name = "Degen Gaming Token";
     string public symbol = "DGT";
     uint8 public decimals = 18;
-    uint256 public totalSupply;
+    uint256 private _totalSupply;
 
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-
-    address public owner;
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Mint(address indexed to, uint256 value);
-    event Redeem(address indexed from, uint256 value);
-    event Burn(address indexed from, uint256 value);
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
 
     constructor(uint256 initialSupply) {
-        owner = msg.sender;
-        totalSupply = initialSupply * 10 ** uint256(decimals);
-        balanceOf[msg.sender] = totalSupply;
+        _totalSupply = initialSupply * 10 ** uint256(decimals);
+        _balances[msg.sender] = _totalSupply;
+        emit Transfer(address(0), msg.sender, _totalSupply);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only the owner can perform this action");
-        _;
+    function totalSupply() external view override returns (uint256) {
+        return _totalSupply;
     }
 
-    function transfer(address to, uint256 value) public returns (bool success) {
+    function balanceOf(address account) external view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
+        _transfer(msg.sender, recipient, amount);
+        return true;
+    }
+
+    function allowance(address owner, address spender) external view override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        _approve(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve(sender, msg.sender, _allowances[sender][msg.sender] - amount);
+        return true;
+    }
+
+    function _transfer(address sender, address recipient, uint256 amount) internal {
+        require(sender != address(0), "Invalid sender address");
+        require(recipient != address(0), "Invalid recipient address");
+        require(_balances[sender] >= amount, "Insufficient balance");
+
+        _balances[sender] -= amount;
+        _balances[recipient] += amount;
+
+        emit Transfer(sender, recipient, amount);
+    }
+
+    function _approve(address owner, address spender, uint256 amount) internal {
+        require(owner != address(0), "Invalid owner address");
+        require(spender != address(0), "Invalid spender address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    function mint(address to, uint256 amount) external onlyOwner returns (bool) {
         require(to != address(0), "Invalid recipient address");
-        require(balanceOf[msg.sender] >= value, "Insufficient balance");
+        require(_totalSupply + amount >= _totalSupply, "Overflow");
+        require(_balances[to] + amount >= _balances[to], "Overflow");
 
-        balanceOf[msg.sender] -= value;
-        balanceOf[to] += value;
+        _totalSupply += amount;
+        _balances[to] += amount;
 
-        emit Transfer(msg.sender, to, value);
+        emit Transfer(address(0), to, amount);
         return true;
     }
 
-    function approve(address spender, uint256 value) public returns (bool success) {
-        allowance[msg.sender][spender] = value;
-        emit Approval(msg.sender, spender, value);
+    function redeem(uint256 amount) external returns (bool) {
+        require(_balances[msg.sender] >= amount, "Insufficient balance");
+
+        _balances[msg.sender] -= amount;
+        emit Transfer(msg.sender, address(0), amount);
+
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 value) public returns (bool success) {
-        require(from != address(0), "Invalid sender address");
-        require(to != address(0), "Invalid recipient address");
-        require(balanceOf[from] >= value, "Insufficient balance");
-        require(allowance[from][msg.sender] >= value, "Allowance exceeded");
+    function burn(uint256 amount) external returns (bool) {
+        require(_balances[msg.sender] >= amount, "Insufficient balance");
+        require(_totalSupply >= amount, "Insufficient total supply");
 
-        balanceOf[from] -= value;
-        balanceOf[to] += value;
-        allowance[from][msg.sender] -= value;
+        _balances[msg.sender] -= amount;
+        _totalSupply -= amount;
 
-        emit Transfer(from, to, value);
-        return true;
-    }
-
-    function mint(address to, uint256 value) public onlyOwner returns (bool success) {
-        require(to != address(0), "Invalid recipient address");
-        require(totalSupply + value >= totalSupply, "Overflow");
-        require(balanceOf[to] + value >= balanceOf[to], "Overflow");
-
-        totalSupply += value;
-        balanceOf[to] += value;
-
-        emit Mint(to, value);
-        emit Transfer(address(0), to, value);
-        return true;
-    }
-
-    function redeem(uint256 value) public returns (bool success) {
-        require(balanceOf[msg.sender] >= value, "Insufficient balance");
-
-        balanceOf[msg.sender] -= value;
-
-    
-
-        emit Redeem(msg.sender, value);
-        return true;
-    }
-
-    function burn(uint256 value) public returns (bool success) {
-        require(balanceOf[msg.sender] >= value, "Insufficient balance");
-
-        balanceOf[msg.sender] -= value;
-        totalSupply -= value;
-
-        emit Burn(msg.sender, value);
-        emit Transfer(msg.sender, address(0), value);
+        emit Transfer(msg.sender, address(0), amount);
         return true;
     }
 }
